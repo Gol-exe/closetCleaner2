@@ -42,6 +42,7 @@ The report is saved to: `closetCleaner/report/<playername>_report.txt`
 1. **UNUSED GEAR** - Items in your inventory that appear in zero lua files
 2. **GEAR IN USE** - Items found in your lua files, sorted by how many jobs use them
 3. **MISSING GEAR** - Items referenced in lua files but not found in your inventory
+4. **POSSIBLE MISSPELLINGS** - Item names in your lua files that don't match any known item in the game's resource database. Each entry shows the name as written, which jobs reference it, and a "Did you mean?" suggestion based on the closest matching real item name (using Levenshtein distance). This helps catch typos in your GearSwap sets that would silently fail to equip.
 
 ## How It Works
 
