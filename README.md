@@ -9,25 +9,25 @@ and which are referenced in your luas but missing from your bags.
 
 ## Files
 
-- `closetCleaner.lua` - Addon entry point (commands, inventory reading, report generation)
+- `closetCleaner2.lua` - Addon entry point (commands, inventory reading, report generation)
 - `luaParser.lua` - Text-based parser that extracts gear names from GearSwap lua files
 - `ccConfig.lua` - User configuration (jobs, ignore patterns, skip bags, etc.)
 
 ## Setup
 
-1. Place the `closetCleaner` folder in your `Windower4/addons/` directory.
+1. Place the `closetCleaner2` folder in your `Windower4/addons/` directory.
 2. Edit `ccConfig.lua` to list the jobs you play and any items you want excluded.
 3. Your GearSwap lua files should be in the standard location: `gearswap/data/`.
 
 ## Usage
 
 ```
-//lua l closetCleaner       -- Load the addon
+//lua l closetCleaner2       -- Load the addon
 //cc report                 -- Generate the report
 //cc help                   -- Show available commands
 ```
 
-The report is saved to: `closetCleaner/report/<playername>_report.txt`
+The report is saved to: `closetCleaner2/report/<playername>_report.txt`
 
 ## Config Options
 
@@ -61,7 +61,7 @@ very few items since the vast majority of gear is defined as string literals.
 
 ## File Naming
 
-closetCleaner searches for job lua files in this order:
+closetCleaner2 searches for job lua files in this order:
 - `gearswap/data/<PlayerName>_<JOB>_gear.lua`
 - `gearswap/data/<PlayerName>_<JOB>.lua`
 - `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_Gear.lua`

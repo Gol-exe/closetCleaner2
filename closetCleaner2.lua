@@ -1,7 +1,7 @@
 _addon.name = 'closetCleaner2'
 _addon.version = '2.0'
 _addon.author = 'Brimstone, Gol-Exe'
-_addon.commands = {'cc', 'closetCleaner'}
+_addon.commands = {'cc', 'closetCleaner2'}
 
 require 'strings'
 require 'tables'
@@ -32,12 +32,12 @@ local function load_config()
     local cfg_path = windower.addon_path .. 'ccConfig.lua'
     local chunk, err = loadfile(cfg_path)
     if not chunk then
-        windower.add_to_chat(123, 'closetCleaner: failed to load ccConfig.lua: ' .. tostring(err))
+        windower.add_to_chat(123, 'closetCleaner2: failed to load ccConfig.lua: ' .. tostring(err))
         return nil
     end
     local ok, cfg = pcall(chunk)
     if not ok or type(cfg) ~= 'table' then
-        windower.add_to_chat(123, 'closetCleaner: ccConfig.lua must return a table')
+        windower.add_to_chat(123, 'closetCleaner2: ccConfig.lua must return a table')
         return nil
     end
     return cfg
