@@ -35,11 +35,11 @@ patterns and skip bags. Job lists are configured per-character using commands.
 ### Examples
 
 ```
-//cc add Bob DRG WHM NIN        -- Bob now scans DRG, WHM, NIN
-//cc add Bob BLM                -- Adds BLM to Bob's existing list
-//cc remove Bob NIN             -- Removes NIN from Bob's list
+//cc add <characterName> DRG WHM NIN        -- <characterName> now scans DRG, WHM, NIN
+//cc add <characterName> BLM                -- Adds BLM to <characterName>'s existing list
+//cc remove <characterName> NIN             -- Removes NIN from <characterName>'s list
 //cc report                     -- Report for whoever is logged in
-//cc report Bob                 -- Report using Bob's jobs & lua files
+//cc report <characterName>                 -- Report using <characterName>'s jobs & lua files
 ```
 
 The report is saved to: `closetCleaner2/report/<charname>_report.txt`
