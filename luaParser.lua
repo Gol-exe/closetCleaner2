@@ -87,7 +87,6 @@ function parser.extract_gear_names(source)
     end
 
     -- Pattern 2: name = "Item Name" inside augmented gear tables.
-    -- Only match `name` key (not other slot keys already matched above).
     for val in clean:gmatch('name%s*=%s*"([^"]+)"') do
         local name = val:match('^%s*(.-)%s*$')
         if name ~= '' and name ~= 'empty' then
@@ -98,6 +97,26 @@ function parser.extract_gear_names(source)
         local name = val:match('^%s*(.-)%s*$')
         if name ~= '' and name ~= 'empty' then
             items[name:lower()] = true
+        end
+    end
+
+    -- Pattern 3: slot_key = { "Item Name", augments={...} }
+    -- Augmented gear from //gs export uses the item name as the first
+    -- positional element in the table, with no name= key.
+    for key, val in clean:gmatch('(%a[%w_]*)%s*=%s*{%s*"([^"]+)"') do
+        if gear_slots[key] then
+            local name = val:match('^%s*(.-)%s*$')
+            if name ~= '' and name ~= 'empty' then
+                items[name:lower()] = true
+            end
+        end
+    end
+    for key, val in clean:gmatch("(%a[%w_]*)%s*=%s*{%s*'([^']+)'") do
+        if gear_slots[key] then
+            local name = val:match('^%s*(.-)%s*$')
+            if name ~= '' and name ~= 'empty' then
+                items[name:lower()] = true
+            end
         end
     end
 
