@@ -665,7 +665,7 @@ local function run_report(cfg, char_name)
     f:write('\n')
 
     -- Section 3
-    f:write('Section 3: MISSING GEAR (in lua files, not in inventory)   [' .. #missing .. ' items]\n')
+    f:write('Section 3: MISSING GEAR (in lua files, not in inventory, items stored on slips will also be marked as missing)   [' .. #missing .. ' items]\n')
     local w2m = {NAME_W, JOBS_W}
     write_divider(f, w2m)
     write_row(f, {'Name', 'Jobs'}, w2m)
