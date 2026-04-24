@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+    <global>
+        <skip_bags>
+            <bag>Storage</bag>
+            <bag>Temporary</bag>
+        </skip_bags>
+        <max_use_count></max_use_count>
+        <debug>false</debug>
+        <ignore_patterns>
+            <pattern>Rem's Tale.*</pattern>
+            <pattern>Storage Slip %d+</pattern>
+            <pattern>Deed of.*</pattern>
+            <pattern>%a+ Virtue</pattern>
+            <pattern>Dragua's Scale</pattern>
+            <pattern>Glittering Yarn</pattern>
+            <pattern>Dim%. Ring.*</pattern>
+            <pattern>Cupboard</pattern>
+            <pattern>.*VCS.*</pattern>
+            <pattern>.*Abjuration.*</pattern>
+            <pattern>%a+ Organ</pattern>
+            <pattern>Mecisto%. Mantle</pattern>
+            <pattern>Homing Ring</pattern>
+            <pattern>%a+ Plans</pattern>
+            <pattern>Orblight</pattern>
+            <pattern>Yellow 3D Almirah</pattern>
+            <pattern>%a+ Statue</pattern>
+            <pattern>Luminion Chip</pattern>
+            <pattern>.* Mannequin</pattern>
+            <pattern>R%. Bamboo Grass</pattern>
+            <pattern>Coiled Yarn</pattern>
+            <pattern>Stationery Set</pattern>
+            <pattern>%a+ Flag</pattern>
+            <pattern>Bonbori</pattern>
+            <pattern>Imperial Standard</pattern>
+            <pattern>%a+ Bed</pattern>
+            <pattern>Adamant%. Statue</pattern>
+            <pattern>Festival Dolls</pattern>
+            <pattern>Taru Tot Toyset</pattern>
+            <pattern>Bookshelf</pattern>
+            <pattern>Guild Flyers</pattern>
+            <pattern>San d'Orian Tree</pattern>
+            <pattern>.*Signet Staff</pattern>
+            <pattern>Capacity Ring</pattern>
+            <pattern>Facility Ring</pattern>
+            <pattern>Trizek Ring</pattern>
+            <pattern>Bam%. Grass Basket</pattern>
+            <pattern>Portafurnace</pattern>
+            <pattern>%a+'s Sign</pattern>
+            <pattern>%a+'s Apron</pattern>
+            <pattern>Toolbag .*</pattern>
+            <pattern>%a+ Crepe</pattern>
+            <pattern>%a+ Sushi.*</pattern>
+            <pattern>.* Stable Collar</pattern>
+            <pattern>Plovid Effluvium</pattern>
+            <pattern>Gem of the %a+</pattern>
+            <pattern>Inoshishinofuda</pattern>
+            <pattern>Ichigohitofuri</pattern>
+            <pattern>Chonofuda</pattern>
+            <pattern>Shikanofuda</pattern>
+            <pattern>Shihei</pattern>
+            <pattern>Midras%.s Helm .1</pattern>
+            <pattern>Cobra Staff</pattern>
+            <pattern>Ram Staff</pattern>
+            <pattern>Fourth Staff</pattern>
+            <pattern>Warp Ring</pattern>
+            <pattern>Chocobo Whistle</pattern>
+            <pattern>Warp Cudgel</pattern>
+            <pattern>%a+ Broth</pattern>
+            <pattern>Tavnazian Ring</pattern>
+            <pattern>Official Reflector</pattern>
+            <pattern>Pashhow Ring</pattern>
+            <pattern>Dredger Hose</pattern>
+            <pattern>Trench Tunic</pattern>
+            <pattern>Sanjaku%.Tenugui</pattern>
+            <pattern>Katana%.kazari</pattern>
+            <pattern>Carver's Torque</pattern>
+            <pattern>Kabuto%.kazari</pattern>
+            <pattern>Etched Memory</pattern>
+            <pattern>Trbl%. Hatchet</pattern>
+            <pattern>Maat's Cap</pattern>
+            <pattern>Trbl%. Pickaxe</pattern>
+            <pattern>Olduum Ring</pattern>
+            <pattern>Linkpearl</pattern>
+            <pattern>Caliber Ring</pattern>
+            <pattern>Vana'clock</pattern>
+            <pattern>Signal Pearl</pattern>
+            <pattern>Windy Greens</pattern>
+            <pattern>Nexus Cape</pattern>
+            <pattern>Wastebasket</pattern>
+            <pattern>Sickle</pattern>
+            <pattern>Carpenter's Gloves</pattern>
+            <pattern>Shinobi%.Tabi</pattern>
+            <pattern>Guardian Board</pattern>
+            <pattern>%a+ Pie</pattern>
+            <pattern>Pet Food %a+</pattern>
+            <pattern>Reraise %a+</pattern>
+            <pattern>P%. %a+ Card</pattern>
+        </ignore_patterns>
+    </global>
+    <characters>
+    </characters>
+</settings>

@@ -1,6 +1,6 @@
 _addon.name = 'closetCleaner2'
-_addon.version = '2.0'
-_addon.author = 'Brimstone, Gol-Exe'
+_addon.version = '2.1'
+_addon.author = 'Gol-Exe'
 _addon.commands = {'cc', 'closetCleaner2'}
 
 require 'strings'
@@ -28,45 +28,215 @@ local function file_exists(path)
     return windower.file_exists(path)
 end
 
-local function load_config()
-    local cfg_path = windower.addon_path .. 'ccConfig.lua'
-    local chunk, err = loadfile(cfg_path)
-    if not chunk then
-        windower.add_to_chat(123, 'closetCleaner2: failed to load ccConfig.lua: ' .. tostring(err))
-        return nil
+local function ucfirst(s)
+    return s:sub(1,1):upper() .. s:sub(2):lower()
+end
+
+local ALL_JOBS = {
+    'BLM','BLU','BRD','BST','COR','DNC','DRG','DRK','GEO','MNK','NIN',
+    'PLD','PUP','RDM','RNG','RUN','SAM','SCH','SMN','THF','WAR','WHM',
+}
+
+----------------------------------------------------------------------
+-- XML settings (data/settings.xml)
+----------------------------------------------------------------------
+
+local function xml_escape(s)
+    return s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;')
+end
+
+local function xml_unescape(s)
+    return s:gsub('&lt;', '<'):gsub('&gt;', '>'):gsub('&apos;', "'")
+             :gsub('&quot;', '"'):gsub('&amp;', '&')
+end
+
+local function xml_escape_attr(s)
+    return s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;')
+end
+
+local function settings_path()
+    return windower.addon_path .. 'data/settings.xml'
+end
+
+local function serialize_settings(cfg)
+    local lines = {}
+    lines[#lines + 1] = '<?xml version="1.0" encoding="UTF-8"?>'
+    lines[#lines + 1] = '<settings>'
+    lines[#lines + 1] = '    <global>'
+
+    lines[#lines + 1] = '        <skip_bags>'
+    for _, bag in ipairs(cfg.global.skip_bags or {}) do
+        lines[#lines + 1] = '            <bag>' .. xml_escape(bag) .. '</bag>'
     end
-    local ok, cfg = pcall(chunk)
-    if not ok or type(cfg) ~= 'table' then
-        windower.add_to_chat(123, 'closetCleaner2: ccConfig.lua must return a table')
-        return nil
+    lines[#lines + 1] = '        </skip_bags>'
+
+    local muc = cfg.global.max_use_count
+    lines[#lines + 1] = '        <max_use_count>' .. (muc and tostring(muc) or '') .. '</max_use_count>'
+    lines[#lines + 1] = '        <debug>' .. tostring(cfg.global.debug or false) .. '</debug>'
+
+    lines[#lines + 1] = '        <ignore_patterns>'
+    for _, pat in ipairs(cfg.global.ignore_patterns or {}) do
+        lines[#lines + 1] = '            <pattern>' .. xml_escape(pat) .. '</pattern>'
     end
+    lines[#lines + 1] = '        </ignore_patterns>'
+
+    lines[#lines + 1] = '    </global>'
+    lines[#lines + 1] = '    <characters>'
+
+    local char_names = {}
+    for name in pairs(cfg.characters or {}) do
+        char_names[#char_names + 1] = name
+    end
+    table.sort(char_names)
+
+    for _, name in ipairs(char_names) do
+        local jobs = cfg.characters[name]
+        lines[#lines + 1] = '        <character name="' .. xml_escape_attr(name) .. '">'
+        for _, job in ipairs(jobs) do
+            lines[#lines + 1] = '            <job>' .. xml_escape(job) .. '</job>'
+        end
+        lines[#lines + 1] = '        </character>'
+    end
+
+    lines[#lines + 1] = '    </characters>'
+    lines[#lines + 1] = '</settings>'
+    return table.concat(lines, '\n') .. '\n'
+end
+
+local function parse_settings(text)
+    local cfg = { global = {}, characters = {} }
+
+    local global_block = text:match('<global>(.-)</global>')
+    if global_block then
+        local bags_block = global_block:match('<skip_bags>(.-)</skip_bags>')
+        if bags_block then
+            local skip_bags = {}
+            for bag in bags_block:gmatch('<bag>(.-)</bag>') do
+                skip_bags[#skip_bags + 1] = xml_unescape(bag)
+            end
+            cfg.global.skip_bags = skip_bags
+        end
+
+        local muc = global_block:match('<max_use_count>(.-)</max_use_count>')
+        if muc then
+            cfg.global.max_use_count = tonumber(muc:match('^%s*(.-)%s*$'))
+        end
+
+        local dbg = global_block:match('<debug>(.-)</debug>')
+        if dbg then
+            cfg.global.debug = dbg:match('^%s*(.-)%s*$') == 'true'
+        end
+
+        local patterns_block = global_block:match('<ignore_patterns>(.-)</ignore_patterns>')
+        if patterns_block then
+            local patterns = {}
+            for pat in patterns_block:gmatch('<pattern>(.-)</pattern>') do
+                patterns[#patterns + 1] = xml_unescape(pat)
+            end
+            cfg.global.ignore_patterns = patterns
+        end
+    end
+
+    local chars_block = text:match('<characters>(.-)</characters>')
+    if chars_block then
+        for attr, char_body in chars_block:gmatch('<character%s+name="([^"]+)">(.-)</character>') do
+            local jobs = {}
+            for job in char_body:gmatch('<job>(.-)</job>') do
+                jobs[#jobs + 1] = xml_unescape(job):upper()
+            end
+            cfg.characters[xml_unescape(attr)] = jobs
+        end
+    end
+
     return cfg
 end
 
-----------------------------------------------------------------------
--- Resource index  (built once, reused across reports)
-----------------------------------------------------------------------
+local function save_settings(cfg)
+    local dir = windower.addon_path .. 'data'
+    if not windower.dir_exists(dir) then
+        windower.create_dir(dir)
+    end
+    local f = io.open(settings_path(), 'w')
+    if not f then
+        windower.add_to_chat(123, 'closetCleaner2: could not write ' .. settings_path())
+        return false
+    end
+    f:write(serialize_settings(cfg))
+    f:close()
+    return true
+end
 
-local items_by_name     -- res short name (lower) -> id
-local items_by_longname -- res long name  (lower) -> id
+local function load_settings()
+    local f = io.open(settings_path(), 'r')
+    if not f then
+        windower.add_to_chat(123, 'closetCleaner2: data/settings.xml not found. '
+            .. 'Copy the default from the addon folder or reload the addon.')
+        return nil
+    end
+    local text = f:read('*a')
+    f:close()
+    return parse_settings(text)
+end
 
-local function build_resource_index()
-    if items_by_name then return end
-    items_by_name = {}
-    items_by_longname = {}
-    for id, entry in pairs(res.items) do
-        if entry.en then
-            items_by_name[entry.en:lower()] = id
-        end
-        if entry.enl then
-            items_by_longname[entry.enl:lower()] = id
+local function get_character_jobs(cfg, char_name)
+    if not cfg or not cfg.characters then return nil end
+    return cfg.characters[char_name]
+end
+
+local function add_character_jobs(cfg, char_name, jobs)
+    if not cfg.characters then cfg.characters = {} end
+    if not cfg.characters[char_name] then
+        cfg.characters[char_name] = {}
+    end
+
+    local existing = {}
+    for _, j in ipairs(cfg.characters[char_name]) do
+        existing[j] = true
+    end
+
+    local added = {}
+    for _, j in ipairs(jobs) do
+        local upper = j:upper()
+        if not existing[upper] then
+            existing[upper] = true
+            cfg.characters[char_name][#cfg.characters[char_name] + 1] = upper
+            added[#added + 1] = upper
         end
     end
+
+    table.sort(cfg.characters[char_name])
+    save_settings(cfg)
+    return added
 end
 
-local function resolve_item_id(name_lower)
-    return items_by_name[name_lower] or items_by_longname[name_lower]
+local function remove_character_jobs(cfg, char_name, jobs)
+    if not cfg.characters or not cfg.characters[char_name] then
+        return {}
+    end
+
+    local to_remove = {}
+    for _, j in ipairs(jobs) do
+        to_remove[j:upper()] = true
+    end
+
+    local removed = {}
+    local kept = {}
+    for _, j in ipairs(cfg.characters[char_name]) do
+        if to_remove[j] then
+            removed[#removed + 1] = j
+        else
+            kept[#kept + 1] = j
+        end
+    end
+
+    cfg.characters[char_name] = kept
+    save_settings(cfg)
+    return removed
 end
+
+----------------------------------------------------------------------
+-- Equipment check
+----------------------------------------------------------------------
 
 local function is_equippable(item_entry)
     if not item_entry or not item_entry.slots then
@@ -76,6 +246,44 @@ local function is_equippable(item_entry)
         return next(item_entry.slots) ~= nil
     end
     return item_entry.slots ~= 0
+end
+
+----------------------------------------------------------------------
+-- Resource index  (built once, reused across reports)
+-- Maps each lowered name to an array of item IDs so that multi-stage
+-- items (same name, different IDs) all resolve correctly.
+-- Only equippable items are indexed.
+----------------------------------------------------------------------
+
+local items_by_name     -- res short name (lower) -> {id, ...}
+local items_by_longname -- res long name  (lower) -> {id, ...}
+
+local function build_resource_index()
+    if items_by_name then return end
+    items_by_name = {}
+    items_by_longname = {}
+    for id, entry in pairs(res.items) do
+        if is_equippable(entry) then
+            if entry.en then
+                local key = entry.en:lower()
+                if not items_by_name[key] then
+                    items_by_name[key] = {}
+                end
+                items_by_name[key][#items_by_name[key] + 1] = id
+            end
+            if entry.enl then
+                local key = entry.enl:lower()
+                if not items_by_longname[key] then
+                    items_by_longname[key] = {}
+                end
+                items_by_longname[key][#items_by_longname[key] + 1] = id
+            end
+        end
+    end
+end
+
+local function resolve_item_ids(name_lower)
+    return items_by_name[name_lower] or items_by_longname[name_lower]
 end
 
 ----------------------------------------------------------------------
@@ -113,8 +321,8 @@ local function find_closest_item(name_lower, max_distance)
         if dist == 1 then break end
     end
     if best_dist <= max_distance then
-        local id = items_by_name[best_name]
-        local entry = id and res.items[id]
+        local ids = items_by_name[best_name]
+        local entry = ids and ids[1] and res.items[ids[1]]
         if entry then return entry.en, best_dist end
     end
     return nil
@@ -137,10 +345,10 @@ local function gearswap_base_path()
     return ensure_trailing_slash(parent .. 'GearSwap/')
 end
 
-local function build_search_dirs(gs_path)
+local function build_search_dirs(gs_path, char_name)
     local dirs = {}
     local data = gs_path .. 'data/'
-    local name = windower.ffxi.get_player().name
+    local name = char_name or windower.ffxi.get_player().name
     dirs[#dirs + 1] = ensure_trailing_slash(data .. name)
     dirs[#dirs + 1] = ensure_trailing_slash(data .. 'common')
     dirs[#dirs + 1] = data
@@ -160,9 +368,9 @@ local function build_search_dirs(gs_path)
     return dirs
 end
 
-local function resolve_job_lua(gs_path, job)
+local function resolve_job_lua(gs_path, job, char_name)
     local data = gs_path .. 'data/'
-    local name = windower.ffxi.get_player().name
+    local name = char_name or windower.ffxi.get_player().name
     local sub = data .. name .. '/'
     local candidates = {
         data .. name .. '_' .. job .. '_Gear.lua',
@@ -268,12 +476,12 @@ local function sorted_keys_alpha(tbl)
     return keys
 end
 
-local function run_report(cfg)
+local function run_report(cfg, char_name)
     build_resource_index()
 
-    local player_name = windower.ffxi.get_player().name
+    local player_name = char_name or windower.ffxi.get_player().name
     local gs_path = gearswap_base_path()
-    local search_dirs = build_search_dirs(gs_path)
+    local search_dirs = build_search_dirs(gs_path, player_name)
 
     -- Build skip-bags lookup
     local skip_bags_set = {}
@@ -284,13 +492,13 @@ local function run_report(cfg)
     ----------------------------------------------------------------
     -- Phase 1: Read inventory
     ----------------------------------------------------------------
-    windower.add_to_chat(207, 'closetCleaner: reading inventory...')
+    windower.add_to_chat(207, 'closetCleaner2: reading inventory...')
     local inventory = read_inventory(skip_bags_set)
 
     ----------------------------------------------------------------
     -- Phase 2: Parse gear from lua files
     ----------------------------------------------------------------
-    windower.add_to_chat(207, 'closetCleaner: parsing lua files...')
+    windower.add_to_chat(207, 'closetCleaner2: parsing lua files...')
 
     -- gear_items[item_id] = { jobs = {JOB=true, ...} }
     local gear_items = {}
@@ -298,22 +506,24 @@ local function run_report(cfg)
     local unresolved = {}
 
     for _, job in ipairs(cfg.jobs) do
-        local lua_path = resolve_job_lua(gs_path, job)
+        local lua_path = resolve_job_lua(gs_path, job, player_name)
         if not lua_path then
-            windower.add_to_chat(8, 'closetCleaner: no lua file found for ' .. job)
+            windower.add_to_chat(8, 'closetCleaner2: no lua file found for ' .. job)
         else
-            windower.add_to_chat(207, 'closetCleaner: parsing ' .. job)
+            windower.add_to_chat(207, 'closetCleaner2: parsing ' .. job)
             local ok, names = pcall(parser.parse_file_recursive, lua_path, search_dirs)
             if not ok then
-                windower.add_to_chat(123, 'closetCleaner: error parsing ' .. job .. ': ' .. tostring(names))
+                windower.add_to_chat(123, 'closetCleaner2: error parsing ' .. job .. ': ' .. tostring(names))
             else
                 for name_lower in pairs(names) do
-                    local id = resolve_item_id(name_lower)
-                    if id then
-                        if not gear_items[id] then
-                            gear_items[id] = { jobs = {} }
+                    local ids = resolve_item_ids(name_lower)
+                    if ids then
+                        for _, id in ipairs(ids) do
+                            if not gear_items[id] then
+                                gear_items[id] = { jobs = {} }
+                            end
+                            gear_items[id].jobs[job] = true
                         end
-                        gear_items[id].jobs[job] = true
                     else
                         if not unresolved[name_lower] then
                             unresolved[name_lower] = { original = name_lower, jobs = {} }
@@ -361,20 +571,38 @@ local function run_report(cfg)
         end
     end
 
-    -- Classify lua-only items (not in inventory)
+    -- Classify lua-only items (not in inventory).
+    -- Multi-stage items share a name across several IDs; skip an ID if
+    -- any sibling ID for the same name IS in inventory, and deduplicate
+    -- so each name appears at most once in the missing list.
+    local seen_missing = {}
     for id, info in pairs(gear_items) do
         if not inventory[id] then
             local entry = res.items[id]
             if entry then
                 local name = entry.en
-                if not is_ignored(name, ignore_patterns) then
-                    local job_list = sorted_keys_alpha(info.jobs)
-                    if not cfg.max_use_count or #job_list <= cfg.max_use_count then
-                        missing[#missing + 1] = {
-                            id = id, name = name,
-                            jobs_str = table.concat(job_list, ','),
-                        }
+                local name_lower = name:lower()
+                if not seen_missing[name_lower] then
+                    local sibling_in_inv = false
+                    local all_ids = items_by_name[name_lower] or items_by_longname[name_lower]
+                    if all_ids then
+                        for _, alt_id in ipairs(all_ids) do
+                            if inventory[alt_id] then
+                                sibling_in_inv = true
+                                break
+                            end
+                        end
                     end
+                    if not sibling_in_inv and not is_ignored(name, ignore_patterns) then
+                        local job_list = sorted_keys_alpha(info.jobs)
+                        if not cfg.max_use_count or #job_list <= cfg.max_use_count then
+                            missing[#missing + 1] = {
+                                id = id, name = name,
+                                jobs_str = table.concat(job_list, ','),
+                            }
+                        end
+                    end
+                    seen_missing[name_lower] = true
                 end
             end
         end
@@ -397,13 +625,13 @@ local function run_report(cfg)
     local report_path = windower.addon_path .. 'report/' .. player_name .. '_report.txt'
     local f = io.open(report_path, 'w+')
     if not f then
-        windower.add_to_chat(123, 'closetCleaner: could not open report file for writing')
+        windower.add_to_chat(123, 'closetCleaner2: could not open report file for writing')
         return
     end
 
     local banner = string.rep('=', NAME_W + JOBS_W + LOC_W + 12)
     f:write(banner .. '\n')
-    f:write('  ClosetCleaner Report  --  ' .. player_name .. '  --  ' .. os.date('%Y-%m-%d %H:%M') .. '\n')
+    f:write('  ClosetCleaner2 Report  --  ' .. player_name .. '  --  ' .. os.date('%Y-%m-%d %H:%M') .. '\n')
     f:write(banner .. '\n\n')
 
     -- Section 1
@@ -485,7 +713,7 @@ local function run_report(cfg)
     f:write(banner .. '\n')
 
     f:close()
-    windower.add_to_chat(207, 'closetCleaner: report saved to ' .. report_path)
+    windower.add_to_chat(207, 'closetCleaner2: report saved to ' .. report_path)
 
     ----------------------------------------------------------------
     -- Optional debug files
@@ -494,7 +722,7 @@ local function run_report(cfg)
         local dbg_inv_path = windower.addon_path .. 'report/' .. player_name .. '_inventory.txt'
         local fi = io.open(dbg_inv_path, 'w+')
         if fi then
-            fi:write('closetCleaner Inventory Debug:\n')
+            fi:write('closetCleaner2 Inventory Debug:\n')
             fi:write(string.rep('=', 60) .. '\n\n')
             for id, inv_info in pairs(inventory) do
                 local entry = res.items[id]
@@ -502,13 +730,13 @@ local function run_report(cfg)
                 fi:write(name .. '  ->  ' .. table.concat(inv_info.bags, ', ') .. '\n')
             end
             fi:close()
-            windower.add_to_chat(207, 'closetCleaner: debug inventory saved to ' .. dbg_inv_path)
+            windower.add_to_chat(207, 'closetCleaner2: debug inventory saved to ' .. dbg_inv_path)
         end
 
         local dbg_sets_path = windower.addon_path .. 'report/' .. player_name .. '_sets.txt'
         local fs = io.open(dbg_sets_path, 'w+')
         if fs then
-            fs:write('closetCleaner Sets Debug:\n')
+            fs:write('closetCleaner2 Sets Debug:\n')
             fs:write(string.rep('=', 60) .. '\n\n')
             for id, info in pairs(gear_items) do
                 local entry = res.items[id]
@@ -517,7 +745,7 @@ local function run_report(cfg)
                 fs:write(name .. '  ->  ' .. table.concat(job_list, ', ') .. '\n')
             end
             fs:close()
-            windower.add_to_chat(207, 'closetCleaner: debug sets saved to ' .. dbg_sets_path)
+            windower.add_to_chat(207, 'closetCleaner2: debug sets saved to ' .. dbg_sets_path)
         end
     end
 end
@@ -532,21 +760,92 @@ windower.register_event('addon command', function(...)
     local cmd = args[1]:lower():gsub('^%s+', ''):gsub('%s+$', '')
 
     if cmd == 'report' then
-        local cfg = load_config()
+        local cfg = load_settings()
         if not cfg then return end
-        local ok, err = pcall(run_report, cfg)
-        if not ok then
-            windower.add_to_chat(123, 'closetCleaner: report failed: ' .. tostring(err))
+        local char_name = args[2] and ucfirst(args[2]) or windower.ffxi.get_player().name
+        local jobs = get_character_jobs(cfg, char_name)
+        if not jobs or #jobs == 0 then
+            windower.add_to_chat(207, 'closetCleaner: no jobs configured for ' .. char_name
+                .. ', scanning all jobs. Use  //cc add ' .. char_name .. ' <jobs>  to customize.')
+            jobs = ALL_JOBS
         end
+        local report_cfg = {
+            jobs             = jobs,
+            ignore_patterns  = cfg.global.ignore_patterns,
+            skip_bags        = cfg.global.skip_bags,
+            max_use_count    = cfg.global.max_use_count,
+            debug            = cfg.global.debug,
+        }
+        local ok, err = pcall(run_report, report_cfg, char_name)
+        if not ok then
+            windower.add_to_chat(123, 'closetCleaner2: report failed: ' .. tostring(err))
+        end
+
+    elseif cmd == 'add' then
+        if not args[2] then
+            windower.add_to_chat(123, 'closetCleaner2: usage:  //cc add <character> <job1> [job2] ...')
+            return
+        end
+        local char_name = ucfirst(args[2])
+        local jobs = {}
+        for i = 3, #args do
+            jobs[#jobs + 1] = args[i]
+        end
+        if #jobs == 0 then
+            windower.add_to_chat(123, 'closetCleaner2: provide at least one job.  //cc add ' .. char_name .. ' DRG WHM ...')
+            return
+        end
+        local cfg = load_settings()
+        if not cfg then return end
+        local added = add_character_jobs(cfg, char_name, jobs)
+        if #added > 0 then
+            windower.add_to_chat(207, 'closetCleaner2: added ' .. table.concat(added, ', ') .. ' for ' .. char_name)
+        else
+            windower.add_to_chat(207, 'closetCleaner2: ' .. char_name .. ' already has those jobs')
+        end
+        local current = get_character_jobs(cfg, char_name)
+        windower.add_to_chat(207, 'closetCleaner2: ' .. char_name .. ' jobs: ' .. table.concat(current, ', '))
+
+    elseif cmd == 'remove' then
+        if not args[2] then
+            windower.add_to_chat(123, 'closetCleaner2: usage:  //cc remove <character> <job1> [job2] ...')
+            return
+        end
+        local char_name = ucfirst(args[2])
+        local jobs = {}
+        for i = 3, #args do
+            jobs[#jobs + 1] = args[i]
+        end
+        if #jobs == 0 then
+            windower.add_to_chat(123, 'closetCleaner2: provide at least one job.  //cc remove ' .. char_name .. ' DRG WHM ...')
+            return
+        end
+        local cfg = load_settings()
+        if not cfg then return end
+        local removed = remove_character_jobs(cfg, char_name, jobs)
+        if #removed > 0 then
+            windower.add_to_chat(207, 'closetCleaner2: removed ' .. table.concat(removed, ', ') .. ' from ' .. char_name)
+        else
+            windower.add_to_chat(207, 'closetCleaner2: none of those jobs were configured for ' .. char_name)
+        end
+        local current = get_character_jobs(cfg, char_name) or {}
+        if #current > 0 then
+            windower.add_to_chat(207, 'closetCleaner2: ' .. char_name .. ' jobs: ' .. table.concat(current, ', '))
+        else
+            windower.add_to_chat(207, 'closetCleaner2: ' .. char_name .. ' has no jobs configured')
+        end
+
     elseif cmd == 'help' then
-        windower.add_to_chat(207, 'closetCleaner v2 commands:')
-        windower.add_to_chat(207, '  //cc report  - Generate gear usage report')
-        windower.add_to_chat(207, '  //cc help    - Show this help')
+        windower.add_to_chat(207, 'closetCleane2 commands:')
+        windower.add_to_chat(207, '  //cc report [charname]                  - Generate gear report (default: current character)')
+        windower.add_to_chat(207, '  //cc add <charname> <job1> [job2] ...   - Add jobs for a character')
+        windower.add_to_chat(207, '  //cc remove <charname> <job1> [job2] ... - Remove jobs from a character')
+        windower.add_to_chat(207, '  //cc help                               - Show this help')
     else
-        windower.add_to_chat(123, 'closetCleaner: unknown command "' .. cmd .. '". Try //cc help')
+        windower.add_to_chat(123, 'closetCleaner2: unknown command "' .. cmd .. '". Try //cc help')
     end
 end)
 
 windower.register_event('load', function()
-    windower.add_to_chat(207, 'closetCleaner v2 loaded. Type //cc report to generate a report.')
+    windower.add_to_chat(207, 'closetCleaner2 loaded. Type //cc help for commands.')
 end)
