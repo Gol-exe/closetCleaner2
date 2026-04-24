@@ -375,12 +375,17 @@ local function resolve_job_lua(gs_path, job, char_name)
     local candidates = {
         data .. name .. '_' .. job .. '_Gear.lua',
         data .. name .. '_' .. job .. '_gear.lua',
+        data .. name .. '_' .. job .. '_items.lua',
         data .. name .. '_' .. job .. '.lua',
+        data .. name .. '_items.lua',
         sub  .. name .. '_' .. job .. '_Gear.lua',
         sub  .. name .. '_' .. job .. '_gear.lua',
+        sub  .. name .. '_' .. job .. '_items.lua',
         sub  .. name .. '_' .. job .. '.lua',
+        sub  .. name .. '_items.lua',
         data .. job  .. '_Gear.lua',
         data .. job  .. '_gear.lua',
+        data .. job  .. '_items.lua',
         data .. job  .. '.lua',
     }
     for _, p in ipairs(candidates) do

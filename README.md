@@ -80,10 +80,17 @@ very few items since the vast majority of gear is defined as string literals.
 ## File Naming
 
 closetCleaner2 searches for job lua files in this order:
+- `gearswap/data/<PlayerName>_<JOB>_Gear.lua`
 - `gearswap/data/<PlayerName>_<JOB>_gear.lua`
+- `gearswap/data/<PlayerName>_<JOB>_items.lua`
 - `gearswap/data/<PlayerName>_<JOB>.lua`
+- `gearswap/data/<PlayerName>_items.lua`
 - `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_Gear.lua`
 - `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_gear.lua`
+- `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_items.lua`
 - `gearswap/data/<PlayerName>/<PlayerName>_<JOB>.lua`
+- `gearswap/data/<PlayerName>/<PlayerName>_items.lua`
+- `gearswap/data/<JOB>_Gear.lua`
 - `gearswap/data/<JOB>_gear.lua`
+- `gearswap/data/<JOB>_items.lua`
 - `gearswap/data/<JOB>.lua`
