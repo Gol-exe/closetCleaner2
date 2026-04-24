@@ -40,16 +40,32 @@ local function strip_comments(text)
     return table.concat(lines, '\n')
 end
 
--- Also strip block comments  --[[ ... ]]
+-- Strip block comments  --[[ ... ]]  or  --[[ ... ]]--
+-- Lua's . doesn't match newlines, so we search with string.find instead.
 local function strip_block_comments(text)
-    return (text:gsub('%-%-%[%[.-%]%]', ''))
+    local result = text
+    while true do
+        local open = result:find('%-%-%[%[', 1, false)
+        if not open then break end
+        local close = result:find('%]%]', open + 4, false)
+        if not close then
+            result = result:sub(1, open - 1)
+            break
+        end
+        local end_pos = close + 1
+        if result:sub(end_pos + 1, end_pos + 2) == '--' then
+            end_pos = end_pos + 2
+        end
+        result = result:sub(1, open - 1) .. result:sub(end_pos + 1)
+    end
+    return result
 end
 
 -- Extract all gear item names from a single Lua source string.
 -- Returns a table  { ["item name lowercase"] = true, ... }
 function parser.extract_gear_names(source)
     local items = {}
-    local clean = strip_block_comments(strip_comments(source))
+    local clean = strip_comments(strip_block_comments(source))
 
     -- Pattern 1: slot_key = "Item Name"  or  slot_key = 'Item Name'
     -- We match  word = "string"  then check if word is a known slot.
@@ -94,7 +110,7 @@ end
 function parser.extract_includes(source)
     local includes = {}
     local seen = {}
-    local clean = strip_block_comments(strip_comments(source))
+    local clean = strip_comments(strip_block_comments(source))
 
     for name in clean:gmatch("include%s*%(?%s*['\"]([^'\"]+)['\"]") do
         local key = name:lower()
