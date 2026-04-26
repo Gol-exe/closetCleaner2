@@ -80,6 +80,12 @@ local function serialize_settings(cfg)
     end
     lines[#lines + 1] = '        </ignore_patterns>'
 
+    lines[#lines + 1] = '        <file_patterns>'
+    for _, pat in ipairs(cfg.global.file_patterns or {}) do
+        lines[#lines + 1] = '            <pattern>' .. xml_escape(pat) .. '</pattern>'
+    end
+    lines[#lines + 1] = '        </file_patterns>'
+
     lines[#lines + 1] = '    </global>'
     lines[#lines + 1] = '    <characters>'
 
@@ -134,6 +140,15 @@ local function parse_settings(text)
                 patterns[#patterns + 1] = xml_unescape(pat)
             end
             cfg.global.ignore_patterns = patterns
+        end
+
+        local fp_block = global_block:match('<file_patterns>(.-)</file_patterns>')
+        if fp_block then
+            local fp = {}
+            for pat in fp_block:gmatch('<pattern>(.-)</pattern>') do
+                fp[#fp + 1] = xml_unescape(pat)
+            end
+            cfg.global.file_patterns = fp
         end
     end
 
@@ -332,6 +347,26 @@ end
 -- GearSwap data path resolution
 ----------------------------------------------------------------------
 
+-- Base file patterns for locating job lua files.  Placeholders:
+--   {name} = character name,  {job} = job abbreviation (e.g. BLM)
+-- Paths are relative to the GearSwap data/ directory.
+local BASE_FILE_PATTERNS = {
+    '{name}_{job}_Gear.lua',
+    '{name}_{job}_gear.lua',
+    '{name}_{job}_items.lua',
+    '{name}_{job}.lua',
+    '{name}_items.lua',
+    '{name}/{name}_{job}_Gear.lua',
+    '{name}/{name}_{job}_gear.lua',
+    '{name}/{name}_{job}_items.lua',
+    '{name}/{name}_{job}.lua',
+    '{name}/{name}_items.lua',
+    '{job}_Gear.lua',
+    '{job}_gear.lua',
+    '{job}_items.lua',
+    '{job}.lua',
+}
+
 local function gearswap_base_path()
     local addon = ensure_trailing_slash(normalize_slashes(windower.addon_path))
     local parent = addon:match('^(.*/).-/$') or addon
@@ -368,28 +403,25 @@ local function build_search_dirs(gs_path, char_name)
     return dirs
 end
 
-local function resolve_job_lua(gs_path, job, char_name)
-    local data = gs_path .. 'data/'
+local function expand_file_pattern(pattern, name, job)
+    return (pattern:gsub('{name}', name):gsub('{job}', job))
+end
+
+local function resolve_job_lua(gs_path, job, char_name, extra_patterns)
+    local data = ensure_trailing_slash(gs_path .. 'data/')
     local name = char_name or windower.ffxi.get_player().name
-    local sub = data .. name .. '/'
-    local candidates = {
-        data .. name .. '_' .. job .. '_Gear.lua',
-        data .. name .. '_' .. job .. '_gear.lua',
-        data .. name .. '_' .. job .. '_items.lua',
-        data .. name .. '_' .. job .. '.lua',
-        data .. name .. '_items.lua',
-        sub  .. name .. '_' .. job .. '_Gear.lua',
-        sub  .. name .. '_' .. job .. '_gear.lua',
-        sub  .. name .. '_' .. job .. '_items.lua',
-        sub  .. name .. '_' .. job .. '.lua',
-        sub  .. name .. '_items.lua',
-        data .. job  .. '_Gear.lua',
-        data .. job  .. '_gear.lua',
-        data .. job  .. '_items.lua',
-        data .. job  .. '.lua',
-    }
-    for _, p in ipairs(candidates) do
-        if file_exists(p) then return p end
+
+    local all_patterns = {}
+    for _, p in ipairs(BASE_FILE_PATTERNS) do
+        all_patterns[#all_patterns + 1] = p
+    end
+    for _, p in ipairs(extra_patterns or {}) do
+        all_patterns[#all_patterns + 1] = p
+    end
+
+    for _, pattern in ipairs(all_patterns) do
+        local path = data .. expand_file_pattern(pattern, name, job)
+        if file_exists(path) then return path end
     end
     return nil
 end
@@ -511,7 +543,7 @@ local function run_report(cfg, char_name)
     local unresolved = {}
 
     for _, job in ipairs(cfg.jobs) do
-        local lua_path = resolve_job_lua(gs_path, job, player_name)
+        local lua_path = resolve_job_lua(gs_path, job, player_name, cfg.file_patterns)
         if not lua_path then
             windower.add_to_chat(8, 'closetCleaner2: no lua file found for ' .. job)
         else
@@ -780,6 +812,7 @@ windower.register_event('addon command', function(...)
             skip_bags        = cfg.global.skip_bags,
             max_use_count    = cfg.global.max_use_count,
             debug            = cfg.global.debug,
+            file_patterns    = cfg.global.file_patterns,
         }
         local ok, err = pcall(run_report, report_cfg, char_name)
         if not ok then
@@ -840,12 +873,86 @@ windower.register_event('addon command', function(...)
             windower.add_to_chat(207, 'closetCleaner2: ' .. char_name .. ' has no jobs configured')
         end
 
+    elseif cmd == 'addpattern' then
+        if not args[2] then
+            windower.add_to_chat(123, 'closetCleaner2: usage:  //cc addpattern <pattern>')
+            windower.add_to_chat(123, '  Use {name} for character name, {job} for job abbreviation.')
+            windower.add_to_chat(123, '  Pattern is relative to GearSwap data/ dir.')
+            windower.add_to_chat(123, '  Example:  //cc addpattern {name}/{job}_custom.lua')
+            return
+        end
+        local pattern = table.concat({unpack(args, 2)}, ' ')
+        local cfg = load_settings()
+        if not cfg then return end
+        if not cfg.global.file_patterns then cfg.global.file_patterns = {} end
+
+        for _, existing in ipairs(cfg.global.file_patterns) do
+            if existing == pattern then
+                windower.add_to_chat(207, 'closetCleaner2: pattern already exists: ' .. pattern)
+                return
+            end
+        end
+
+        cfg.global.file_patterns[#cfg.global.file_patterns + 1] = pattern
+        save_settings(cfg)
+        windower.add_to_chat(207, 'closetCleaner2: added file pattern: ' .. pattern)
+
+    elseif cmd == 'removepattern' then
+        if not args[2] then
+            windower.add_to_chat(123, 'closetCleaner2: usage:  //cc removepattern <pattern>')
+            return
+        end
+        local pattern = table.concat({unpack(args, 2)}, ' ')
+        local cfg = load_settings()
+        if not cfg then return end
+        if not cfg.global.file_patterns then
+            windower.add_to_chat(207, 'closetCleaner2: no custom file patterns configured')
+            return
+        end
+
+        local found = false
+        local kept = {}
+        for _, existing in ipairs(cfg.global.file_patterns) do
+            if existing == pattern then
+                found = true
+            else
+                kept[#kept + 1] = existing
+            end
+        end
+
+        if found then
+            cfg.global.file_patterns = kept
+            save_settings(cfg)
+            windower.add_to_chat(207, 'closetCleaner2: removed file pattern: ' .. pattern)
+        else
+            windower.add_to_chat(207, 'closetCleaner2: pattern not found: ' .. pattern)
+        end
+
+    elseif cmd == 'listpatterns' then
+        windower.add_to_chat(207, 'closetCleaner2: base file patterns (built-in):')
+        for _, p in ipairs(BASE_FILE_PATTERNS) do
+            windower.add_to_chat(207, '  ' .. p)
+        end
+        local cfg = load_settings()
+        if cfg and cfg.global.file_patterns and #cfg.global.file_patterns > 0 then
+            windower.add_to_chat(207, 'closetCleaner2: custom file patterns (from settings):')
+            for _, p in ipairs(cfg.global.file_patterns) do
+                windower.add_to_chat(207, '  ' .. p)
+            end
+        else
+            windower.add_to_chat(207, 'closetCleaner2: no custom file patterns configured')
+        end
+
     elseif cmd == 'help' then
-        windower.add_to_chat(207, 'closetCleane2 commands:')
-        windower.add_to_chat(207, '  //cc report [charname]                  - Generate gear report (default: current character)')
-        windower.add_to_chat(207, '  //cc add <charname> <job1> [job2] ...   - Add jobs for a character')
+        windower.add_to_chat(207, 'closetCleaner2 commands:')
+        windower.add_to_chat(207, '  //cc report [charname]                   - Generate gear report (default: current character)')
+        windower.add_to_chat(207, '  //cc add <charname> <job1> [job2] ...    - Add jobs for a character')
         windower.add_to_chat(207, '  //cc remove <charname> <job1> [job2] ... - Remove jobs from a character')
-        windower.add_to_chat(207, '  //cc help                               - Show this help')
+        windower.add_to_chat(207, '  //cc addpattern <pattern>                - Add a custom file pattern')
+        windower.add_to_chat(207, '  //cc removepattern <pattern>             - Remove a custom file pattern')
+        windower.add_to_chat(207, '  //cc listpatterns                        - Show all file patterns')
+        windower.add_to_chat(207, '  //cc help                                - Show this help')
+        windower.add_to_chat(207, 'File patterns use {name} and {job} placeholders, relative to GearSwap data/ dir.')
     else
         windower.add_to_chat(123, 'closetCleaner2: unknown command "' .. cmd .. '". Try //cc help')
     end

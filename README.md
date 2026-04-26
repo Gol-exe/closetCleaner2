@@ -24,12 +24,15 @@ patterns and skip bags. Job lists are configured per-character using commands.
 ## Usage
 
 ```
-//lua l closetCleaner2                    -- Load the addon
-//cc add <charname> <job1> [job2] ...     -- Add jobs for a character
-//cc remove <charname> <job1> [job2] ...  -- Remove jobs from a character
-//cc report                               -- Generate report for current character
-//cc report <charname>                    -- Generate report as another character
-//cc help                                 -- Show available commands
+//lua l closetCleaner2                       -- Load the addon
+//cc add <charname> <job1> [job2] ...        -- Add jobs for a character
+//cc remove <charname> <job1> [job2] ...     -- Remove jobs from a character
+//cc report                                  -- Generate report for current character
+//cc report <charname>                       -- Generate report as another character
+//cc addpattern <pattern>                    -- Add a custom file pattern
+//cc removepattern <pattern>                 -- Remove a custom file pattern
+//cc listpatterns                            -- Show all file patterns (built-in + custom)
+//cc help                                    -- Show available commands
 ```
 
 ### Examples
@@ -38,8 +41,10 @@ patterns and skip bags. Job lists are configured per-character using commands.
 //cc add <characterName> DRG WHM NIN        -- <characterName> now scans DRG, WHM, NIN
 //cc add <characterName> BLM                -- Adds BLM to <characterName>'s existing list
 //cc remove <characterName> NIN             -- Removes NIN from <characterName>'s list
-//cc report                     -- Report for whoever is logged in
+//cc report                                 -- Report for whoever is logged in
 //cc report <characterName>                 -- Report using <characterName>'s jobs & lua files
+//cc addpattern {name}/{job}_custom.lua     -- Add a custom file pattern
+//cc listpatterns                           -- See all patterns being searched
 ```
 
 The report is saved to: `closetCleaner2/report/<charname>_report.txt`
@@ -54,6 +59,7 @@ Global options can be edited directly in the XML:
 - **skip_bags** - Bag names to skip when reading inventory (e.g. `Storage`, `Temporary`)
 - **max_use_count** - Only show items used by at most this many jobs (empty = no limit)
 - **debug** - Set to `true` to write extra `_inventory.txt` and `_sets.txt` debug files
+- **file_patterns** - Custom file patterns for locating job lua files (see below)
 
 ## Report Sections
 
@@ -79,18 +85,38 @@ very few items since the vast majority of gear is defined as string literals.
 
 ## File Naming
 
-closetCleaner2 searches for job lua files in this order:
-- `gearswap/data/<PlayerName>_<JOB>_Gear.lua`
-- `gearswap/data/<PlayerName>_<JOB>_gear.lua`
-- `gearswap/data/<PlayerName>_<JOB>_items.lua`
-- `gearswap/data/<PlayerName>_<JOB>.lua`
-- `gearswap/data/<PlayerName>_items.lua`
-- `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_Gear.lua`
-- `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_gear.lua`
-- `gearswap/data/<PlayerName>/<PlayerName>_<JOB>_items.lua`
-- `gearswap/data/<PlayerName>/<PlayerName>_<JOB>.lua`
-- `gearswap/data/<PlayerName>/<PlayerName>_items.lua`
-- `gearswap/data/<JOB>_Gear.lua`
-- `gearswap/data/<JOB>_gear.lua`
-- `gearswap/data/<JOB>_items.lua`
-- `gearswap/data/<JOB>.lua`
+closetCleaner2 searches for job lua files using pattern templates with two
+placeholders: `{name}` (character name) and `{job}` (job abbreviation like
+`BLM`). All patterns are relative to the GearSwap `data/` directory.
+
+### Built-in patterns (always searched first)
+
+| Pattern | Example path |
+|---|---|
+| `{name}_{job}_Gear.lua` | `data/Ragnar_BLM_Gear.lua` |
+| `{name}_{job}_gear.lua` | `data/Ragnar_BLM_gear.lua` |
+| `{name}_{job}_items.lua` | `data/Ragnar_BLM_items.lua` |
+| `{name}_{job}.lua` | `data/Ragnar_BLM.lua` |
+| `{name}_items.lua` | `data/Ragnar_items.lua` |
+| `{name}/{name}_{job}_Gear.lua` | `data/Ragnar/Ragnar_BLM_Gear.lua` |
+| `{name}/{name}_{job}_gear.lua` | `data/Ragnar/Ragnar_BLM_gear.lua` |
+| `{name}/{name}_{job}_items.lua` | `data/Ragnar/Ragnar_BLM_items.lua` |
+| `{name}/{name}_{job}.lua` | `data/Ragnar/Ragnar_BLM.lua` |
+| `{name}/{name}_items.lua` | `data/Ragnar/Ragnar_items.lua` |
+| `{job}_Gear.lua` | `data/BLM_Gear.lua` |
+| `{job}_gear.lua` | `data/BLM_gear.lua` |
+| `{job}_items.lua` | `data/BLM_items.lua` |
+| `{job}.lua` | `data/BLM.lua` |
+
+### Custom patterns
+
+If you use a non-standard file naming convention, add custom patterns via
+commands or directly in `data/settings.xml` under `<file_patterns>`:
+
+```
+//cc addpattern {name}/{job}_custom.lua
+//cc addpattern sets/{job}_sets.lua
+```
+
+Custom patterns are tried after the built-in ones. The first file that exists
+wins, so order matters. Use `//cc listpatterns` to see all active patterns.

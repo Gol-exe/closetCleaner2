@@ -97,6 +97,8 @@
             <pattern>Reraise %a+</pattern>
             <pattern>P%. %a+ Card</pattern>
         </ignore_patterns>
+        <file_patterns>
+        </file_patterns>
     </global>
     <characters>
     </characters>
