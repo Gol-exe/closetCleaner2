@@ -73,6 +73,7 @@ local function serialize_settings(cfg)
     local muc = cfg.global.max_use_count
     lines[#lines + 1] = '        <max_use_count>' .. (muc and tostring(muc) or '') .. '</max_use_count>'
     lines[#lines + 1] = '        <debug>' .. tostring(cfg.global.debug or false) .. '</debug>'
+    lines[#lines + 1] = '        <report_mode>' .. xml_escape(cfg.global.report_mode or 'default') .. '</report_mode>'
 
     lines[#lines + 1] = '        <ignore_patterns>'
     for _, pat in ipairs(cfg.global.ignore_patterns or {}) do
@@ -131,6 +132,16 @@ local function parse_settings(text)
         local dbg = global_block:match('<debug>(.-)</debug>')
         if dbg then
             cfg.global.debug = dbg:match('^%s*(.-)%s*$') == 'true'
+        end
+
+        local rm = global_block:match('<report_mode>(.-)</report_mode>')
+        if rm then
+            local mode = xml_unescape(rm:match('^%s*(.-)%s*$')):lower()
+            if mode == 'csv' then
+                cfg.global.report_mode = 'csv'
+            else
+                cfg.global.report_mode = 'default'
+            end
         end
 
         local patterns_block = global_block:match('<ignore_patterns>(.-)</ignore_patterns>')
@@ -654,69 +665,8 @@ local function run_report(cfg, char_name)
     table.sort(missing, function(a, b) return a.name:lower() < b.name:lower() end)
 
     ----------------------------------------------------------------
-    -- Phase 4: Write report file
+    -- Phase 4: Build misspelled list and write report file
     ----------------------------------------------------------------
-    if not windower.dir_exists(windower.addon_path .. 'report') then
-        windower.create_dir(windower.addon_path .. 'report')
-    end
-    local report_path = windower.addon_path .. 'report/' .. player_name .. '_report.txt'
-    local f = io.open(report_path, 'w+')
-    if not f then
-        windower.add_to_chat(123, 'closetCleaner2: could not open report file for writing')
-        return
-    end
-
-    local banner = string.rep('=', NAME_W + JOBS_W + LOC_W + 12)
-    f:write(banner .. '\n')
-    f:write('  ClosetCleaner2 Report  --  ' .. player_name .. '  --  ' .. os.date('%Y-%m-%d %H:%M') .. '\n')
-    f:write(banner .. '\n\n')
-
-    -- Section 1
-    f:write('Section 1: UNUSED GEAR (in inventory, not in any lua file)   [' .. #unused .. ' items]\n')
-    local w2 = {NAME_W, LOC_W}
-    write_divider(f, w2)
-    write_row(f, {'Name', 'Location'}, w2)
-    write_divider(f, w2)
-    if #unused == 0 then
-        f:write('  (none)\n')
-    else
-        for _, item in ipairs(unused) do
-            write_row(f, {item.name, item.loc}, w2)
-        end
-    end
-    f:write('\n')
-
-    -- Section 2
-    f:write('Section 2: GEAR IN USE (sorted by job count descending)   [' .. #in_use .. ' items]\n')
-    local w3 = {NAME_W, JOBS_W, LOC_W}
-    write_divider(f, w3)
-    write_row(f, {'Name', 'Jobs', 'Location'}, w3)
-    write_divider(f, w3)
-    if #in_use == 0 then
-        f:write('  (none)\n')
-    else
-        for _, item in ipairs(in_use) do
-            write_row(f, {item.name, item.jobs_str, item.loc}, w3)
-        end
-    end
-    f:write('\n')
-
-    -- Section 3
-    f:write('Section 3: MISSING GEAR (in lua files, not in inventory, items stored on slips will also be marked as missing)   [' .. #missing .. ' items]\n')
-    local w2m = {NAME_W, JOBS_W}
-    write_divider(f, w2m)
-    write_row(f, {'Name', 'Jobs'}, w2m)
-    write_divider(f, w2m)
-    if #missing == 0 then
-        f:write('  (none)\n')
-    else
-        for _, item in ipairs(missing) do
-            write_row(f, {item.name, item.jobs_str}, w2m)
-        end
-    end
-    f:write('\n')
-
-    -- Section 4: Possible misspellings
     local misspelled = {}
     for name_lower, info in pairs(unresolved) do
         local suggestion = find_closest_item(name_lower)
@@ -729,28 +679,135 @@ local function run_report(cfg, char_name)
     end
     table.sort(misspelled, function(a, b) return a.name < b.name end)
 
-    f:write('Section 4: POSSIBLE MISSPELLINGS (in lua files, not found in resources)   [' .. #misspelled .. ' items]\n')
-    local SUGGEST_W = 30
-    local w4 = {NAME_W, JOBS_W, SUGGEST_W}
-    write_divider(f, w4)
-    write_row(f, {'Name (as written)', 'Jobs', 'Did you mean?'}, w4)
-    write_divider(f, w4)
-    if #misspelled == 0 then
-        f:write('  (none)\n')
-    else
-        for _, item in ipairs(misspelled) do
-            write_row(f, {item.name, item.jobs_str, item.suggestion or '(no match found)'}, w4)
-        end
+    if not windower.dir_exists(windower.addon_path .. 'report') then
+        windower.create_dir(windower.addon_path .. 'report')
     end
-    f:write('\n')
 
-    -- Summary
-    f:write(banner .. '\n')
-    f:write('  Totals:  ' .. #unused .. ' unused  |  ' .. #in_use .. ' in use  |  ' .. #missing .. ' missing  |  ' .. #misspelled .. ' misspelled\n')
-    f:write(banner .. '\n')
+    local report_mode = cfg.report_mode or 'default'
 
-    f:close()
-    windower.add_to_chat(207, 'closetCleaner2: report saved to ' .. report_path)
+    if report_mode == 'csv' then
+        local report_path = windower.addon_path .. 'report/' .. player_name .. '_report.csv'
+        local f = io.open(report_path, 'w+')
+        if not f then
+            windower.add_to_chat(123, 'closetCleaner2: could not open report file for writing')
+            return
+        end
+
+        local function csv_escape(val)
+            val = val or ''
+            if val:find('[,"\n]') then
+                return '"' .. val:gsub('"', '""') .. '"'
+            end
+            return val
+        end
+
+        local function csv_row(fields)
+            local escaped = {}
+            for i, v in ipairs(fields) do
+                escaped[i] = csv_escape(v)
+            end
+            f:write(table.concat(escaped, ',') .. '\n')
+        end
+
+        csv_row({'Section', 'Name', 'Jobs', 'Location', 'Suggestion'})
+
+        for _, item in ipairs(unused) do
+            csv_row({'Unused', item.name, '', item.loc, ''})
+        end
+        for _, item in ipairs(in_use) do
+            csv_row({'In Use', item.name, item.jobs_str, item.loc, ''})
+        end
+        for _, item in ipairs(missing) do
+            csv_row({'Missing', item.name, item.jobs_str, '', ''})
+        end
+        for _, item in ipairs(misspelled) do
+            csv_row({'Misspelled', item.name, item.jobs_str, '', item.suggestion or ''})
+        end
+
+        f:close()
+        windower.add_to_chat(207, 'closetCleaner2: report saved to ' .. report_path)
+    else
+        local report_path = windower.addon_path .. 'report/' .. player_name .. '_report.txt'
+        local f = io.open(report_path, 'w+')
+        if not f then
+            windower.add_to_chat(123, 'closetCleaner2: could not open report file for writing')
+            return
+        end
+
+        local banner = string.rep('=', NAME_W + JOBS_W + LOC_W + 12)
+        f:write(banner .. '\n')
+        f:write('  ClosetCleaner2 Report  --  ' .. player_name .. '  --  ' .. os.date('%Y-%m-%d %H:%M') .. '\n')
+        f:write(banner .. '\n\n')
+
+        -- Section 1
+        f:write('Section 1: UNUSED GEAR (in inventory, not in any lua file)   [' .. #unused .. ' items]\n')
+        local w2 = {NAME_W, LOC_W}
+        write_divider(f, w2)
+        write_row(f, {'Name', 'Location'}, w2)
+        write_divider(f, w2)
+        if #unused == 0 then
+            f:write('  (none)\n')
+        else
+            for _, item in ipairs(unused) do
+                write_row(f, {item.name, item.loc}, w2)
+            end
+        end
+        f:write('\n')
+
+        -- Section 2
+        f:write('Section 2: GEAR IN USE (sorted by job count descending)   [' .. #in_use .. ' items]\n')
+        local w3 = {NAME_W, JOBS_W, LOC_W}
+        write_divider(f, w3)
+        write_row(f, {'Name', 'Jobs', 'Location'}, w3)
+        write_divider(f, w3)
+        if #in_use == 0 then
+            f:write('  (none)\n')
+        else
+            for _, item in ipairs(in_use) do
+                write_row(f, {item.name, item.jobs_str, item.loc}, w3)
+            end
+        end
+        f:write('\n')
+
+        -- Section 3
+        f:write('Section 3: MISSING GEAR (in lua files, not in inventory, items stored on slips will also be marked as missing)   [' .. #missing .. ' items]\n')
+        local w2m = {NAME_W, JOBS_W}
+        write_divider(f, w2m)
+        write_row(f, {'Name', 'Jobs'}, w2m)
+        write_divider(f, w2m)
+        if #missing == 0 then
+            f:write('  (none)\n')
+        else
+            for _, item in ipairs(missing) do
+                write_row(f, {item.name, item.jobs_str}, w2m)
+            end
+        end
+        f:write('\n')
+
+        -- Section 4
+        f:write('Section 4: POSSIBLE MISSPELLINGS (in lua files, not found in resources)   [' .. #misspelled .. ' items]\n')
+        local SUGGEST_W = 30
+        local w4 = {NAME_W, JOBS_W, SUGGEST_W}
+        write_divider(f, w4)
+        write_row(f, {'Name (as written)', 'Jobs', 'Did you mean?'}, w4)
+        write_divider(f, w4)
+        if #misspelled == 0 then
+            f:write('  (none)\n')
+        else
+            for _, item in ipairs(misspelled) do
+                write_row(f, {item.name, item.jobs_str, item.suggestion or '(no match found)'}, w4)
+            end
+        end
+        f:write('\n')
+
+        -- Summary
+        f:write(banner .. '\n')
+        f:write('  Totals:  ' .. #unused .. ' unused  |  ' .. #in_use .. ' in use  |  ' .. #missing .. ' missing  |  ' .. #misspelled .. ' misspelled\n')
+        f:write(banner .. '\n')
+
+        f:close()
+        windower.add_to_chat(207, 'closetCleaner2: report saved to ' .. report_path)
+    end
 
     ----------------------------------------------------------------
     -- Optional debug files
@@ -813,6 +870,7 @@ windower.register_event('addon command', function(...)
             max_use_count    = cfg.global.max_use_count,
             debug            = cfg.global.debug,
             file_patterns    = cfg.global.file_patterns,
+            report_mode      = cfg.global.report_mode or 'default',
         }
         local ok, err = pcall(run_report, report_cfg, char_name)
         if not ok then
@@ -943,9 +1001,26 @@ windower.register_event('addon command', function(...)
             windower.add_to_chat(207, 'closetCleaner2: no custom file patterns configured')
         end
 
+    elseif cmd == 'reportmode' then
+        local cfg = load_settings()
+        if not cfg then return end
+        local mode = args[2] and args[2]:lower() or nil
+        if not mode then
+            windower.add_to_chat(207, 'closetCleaner2: report_mode = ' .. (cfg.global.report_mode or 'default'))
+            return
+        end
+        if mode ~= 'default' and mode ~= 'csv' then
+            windower.add_to_chat(123, 'closetCleaner2: invalid mode "' .. mode .. '". Use "default" or "csv".')
+            return
+        end
+        cfg.global.report_mode = mode
+        save_settings(cfg)
+        windower.add_to_chat(207, 'closetCleaner2: report_mode set to ' .. mode)
+
     elseif cmd == 'help' then
         windower.add_to_chat(207, 'closetCleaner2 commands:')
         windower.add_to_chat(207, '  //cc report [charname]                   - Generate gear report (default: current character)')
+        windower.add_to_chat(207, '  //cc reportmode [default|csv]            - Get/set report output format')
         windower.add_to_chat(207, '  //cc add <charname> <job1> [job2] ...    - Add jobs for a character')
         windower.add_to_chat(207, '  //cc remove <charname> <job1> [job2] ... - Remove jobs from a character')
         windower.add_to_chat(207, '  //cc addpattern <pattern>                - Add a custom file pattern')

@@ -5,7 +5,7 @@
 local parser = {}
 
 local gear_slots = {
-    main=true, sub=true, range=true, ammo=true,
+    main=true, sub=true, range=true, ranged=true, ammo=true,
     head=true, neck=true, body=true, hands=true,
     back=true, waist=true, legs=true, feet=true,
     left_ear=true, right_ear=true, ear1=true, ear2=true, lear=true, rear=true,

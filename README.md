@@ -29,6 +29,7 @@ patterns and skip bags. Job lists are configured per-character using commands.
 //cc remove <charname> <job1> [job2] ...     -- Remove jobs from a character
 //cc report                                  -- Generate report for current character
 //cc report <charname>                       -- Generate report as another character
+//cc reportmode [default|csv]                -- Get or set the report output format
 //cc addpattern <pattern>                    -- Add a custom file pattern
 //cc removepattern <pattern>                 -- Remove a custom file pattern
 //cc listpatterns                            -- Show all file patterns (built-in + custom)
@@ -47,7 +48,7 @@ patterns and skip bags. Job lists are configured per-character using commands.
 //cc listpatterns                           -- See all patterns being searched
 ```
 
-The report is saved to: `closetCleaner2/report/<charname>_report.txt`
+The report is saved to: `closetCleaner2/report/<charname>_report.txt` (or `.csv` in CSV mode)
 
 ## Settings
 
@@ -59,6 +60,7 @@ Global options can be edited directly in the XML:
 - **skip_bags** - Bag names to skip when reading inventory (e.g. `Storage`, `Temporary`)
 - **max_use_count** - Only show items used by at most this many jobs (empty = no limit)
 - **debug** - Set to `true` to write extra `_inventory.txt` and `_sets.txt` debug files
+- **report_mode** - Report output format: `default` (structured text) or `csv` (comma-delimited for Excel/spreadsheets)
 - **file_patterns** - Custom file patterns for locating job lua files (see below)
 
 ## Report Sections
@@ -67,6 +69,22 @@ Global options can be edited directly in the XML:
 2. **GEAR IN USE** - Items found in your lua files, sorted by how many jobs use them
 3. **MISSING GEAR** - Items referenced in lua files but not found in your inventory
 4. **POSSIBLE MISSPELLINGS** - Item names in your lua files that don't match any known item in the game's resource database. Each entry shows the name as written, which jobs reference it, and a "Did you mean?" suggestion based on the closest matching real item name (using Levenshtein distance). This helps catch typos in your GearSwap sets that would silently fail to equip.
+
+## Report Mode
+
+By default the report is written as a formatted text file. If you prefer a
+format that can be opened directly in Excel or Google Sheets, switch to CSV mode:
+
+```
+//cc reportmode csv      -- Switch to comma-delimited output
+//cc reportmode default  -- Switch back to the structured text report
+//cc reportmode          -- Show the current mode
+```
+
+In CSV mode the report is saved as `<charname>_report.csv` with the columns:
+`Section, Name, Jobs, Location, Suggestion`. Each row is categorized under one
+of `Unused`, `In Use`, `Missing`, or `Misspelled`. The setting persists in
+`data/settings.xml` so it only needs to be changed once.
 
 ## How It Works
 

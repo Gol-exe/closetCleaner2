@@ -7,6 +7,7 @@
         </skip_bags>
         <max_use_count></max_use_count>
         <debug>false</debug>
+        <report_mode>default</report_mode>
         <ignore_patterns>
             <pattern>Rem's Tale.*</pattern>
             <pattern>Storage Slip %d+</pattern>
