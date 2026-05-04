@@ -274,6 +274,23 @@ local function is_equippable(item_entry)
     return item_entry.slots ~= 0
 end
 
+local function get_equippable_jobs_str(entry)
+    if not entry or not entry.jobs or type(entry.jobs) ~= 'table' then
+        return ''
+    end
+    local abbrs = {}
+    for job_id in pairs(entry.jobs) do
+        local job_res = res.jobs[job_id]
+        if job_res and job_res.ens then
+            abbrs[#abbrs + 1] = job_res.ens
+        end
+    end
+    if #abbrs == 0 then return '' end
+    if #abbrs >= 22 then return 'All Jobs' end
+    table.sort(abbrs)
+    return table.concat(abbrs, ',')
+end
+
 ----------------------------------------------------------------------
 -- Resource index  (built once, reused across reports)
 -- Maps each lowered name to an array of item IDs so that multi-stage
@@ -610,10 +627,14 @@ local function run_report(cfg, char_name)
                             id = id, name = name,
                             jobs_str = table.concat(job_list, ','),
                             job_count = job_count, loc = loc,
+                            equip_jobs = get_equippable_jobs_str(entry),
                         }
                     end
                 elseif is_equippable(entry) then
-                    unused[#unused + 1] = { id = id, name = name, loc = loc }
+                    unused[#unused + 1] = {
+                        id = id, name = name, loc = loc,
+                        equip_jobs = get_equippable_jobs_str(entry),
+                    }
                 end
             end
         end
@@ -709,19 +730,19 @@ local function run_report(cfg, char_name)
             f:write(table.concat(escaped, ',') .. '\n')
         end
 
-        csv_row({'Section', 'Name', 'Jobs', 'Location', 'Suggestion'})
+        csv_row({'Section', 'Name', 'Jobs', 'Location', 'Suggestion', 'Equip Jobs'})
 
         for _, item in ipairs(unused) do
-            csv_row({'Unused', item.name, '', item.loc, ''})
+            csv_row({'Unused', item.name, '', item.loc, '', item.equip_jobs or ''})
         end
         for _, item in ipairs(in_use) do
-            csv_row({'In Use', item.name, item.jobs_str, item.loc, ''})
+            csv_row({'In Use', item.name, item.jobs_str, item.loc, '', item.equip_jobs or ''})
         end
         for _, item in ipairs(missing) do
-            csv_row({'Missing', item.name, item.jobs_str, '', ''})
+            csv_row({'Missing', item.name, item.jobs_str, '', '', ''})
         end
         for _, item in ipairs(misspelled) do
-            csv_row({'Misspelled', item.name, item.jobs_str, '', item.suggestion or ''})
+            csv_row({'Misspelled', item.name, item.jobs_str, '', item.suggestion or '', ''})
         end
 
         f:close()

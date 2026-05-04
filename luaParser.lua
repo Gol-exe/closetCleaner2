@@ -61,16 +61,66 @@ local function strip_block_comments(text)
     return result
 end
 
+-- Collect variable-to-string assignments for resolution of indirect gear
+-- references like  head = EMPY.Head  where EMPY.Head was set to a string.
+-- Returns { ["VAR.field"] = "value", ["simple_var"] = "value", ... }
+local function collect_variables(clean)
+    local vars = {}
+
+    -- TABLE.field = "string"  /  TABLE.field = 'string'
+    for tbl, field, val in clean:gmatch('(%a[%w_]*)%.(%a[%w_]*)%s*=%s*"([^"]+)"') do
+        vars[tbl .. '.' .. field] = val:match('^%s*(.-)%s*$')
+    end
+    for tbl, field, val in clean:gmatch("(%a[%w_]*)%.(%a[%w_]*)%s*=%s*'([^']+)'") do
+        vars[tbl .. '.' .. field] = val:match('^%s*(.-)%s*$')
+    end
+
+    -- TABLE = { field = "string", ... }  (table constructors via balanced braces)
+    for tbl_name, body in clean:gmatch('(%a[%w_]*)%s*=%s*(%b{})') do
+        for field, val in body:gmatch('(%a[%w_]*)%s*=%s*"([^"]+)"') do
+            local key = tbl_name .. '.' .. field
+            if not vars[key] then
+                vars[key] = val:match('^%s*(.-)%s*$')
+            end
+        end
+        for field, val in body:gmatch("(%a[%w_]*)%s*=%s*'([^']+)'") do
+            local key = tbl_name .. '.' .. field
+            if not vars[key] then
+                vars[key] = val:match('^%s*(.-)%s*$')
+            end
+        end
+    end
+
+    -- simple_var = "string"  (not a gear slot or 'name', to avoid duplicating
+    -- direct slot matches handled by extract_gear_names)
+    for key, val in clean:gmatch('(%a[%w_]*)%s*=%s*"([^"]+)"') do
+        if not gear_slots[key:lower()] and key ~= 'name' then
+            vars[key] = val:match('^%s*(.-)%s*$')
+        end
+    end
+    for key, val in clean:gmatch("(%a[%w_]*)%s*=%s*'([^']+)'") do
+        if not gear_slots[key:lower()] and key ~= 'name' then
+            vars[key] = val:match('^%s*(.-)%s*$')
+        end
+    end
+
+    return vars
+end
+
 -- Extract all gear item names from a single Lua source string.
 -- Returns a table  { ["item name lowercase"] = true, ... }
 function parser.extract_gear_names(source)
     local items = {}
     local clean = strip_comments(strip_block_comments(source))
 
+    local vars = collect_variables(clean)
+
     -- Pattern 1: slot_key = "Item Name"  or  slot_key = 'Item Name'
     -- We match  word = "string"  then check if word is a known slot.
+    -- Slot check is case-insensitive so that  TABLE.Head = "Item"  is also
+    -- recognised (the gmatch captures "Head" as the key after the dot).
     for key, val in clean:gmatch('(%a[%w_]*)%s*=%s*"([^"]+)"') do
-        if gear_slots[key] then
+        if gear_slots[key:lower()] then
             local name = val:match('^%s*(.-)%s*$')
             if name ~= '' and name ~= 'empty' then
                 items[name:lower()] = true
@@ -78,7 +128,7 @@ function parser.extract_gear_names(source)
         end
     end
     for key, val in clean:gmatch("(%a[%w_]*)%s*=%s*'([^']+)'") do
-        if gear_slots[key] then
+        if gear_slots[key:lower()] then
             local name = val:match('^%s*(.-)%s*$')
             if name ~= '' and name ~= 'empty' then
                 items[name:lower()] = true
@@ -104,7 +154,7 @@ function parser.extract_gear_names(source)
     -- Augmented gear from //gs export uses the item name as the first
     -- positional element in the table, with no name= key.
     for key, val in clean:gmatch('(%a[%w_]*)%s*=%s*{%s*"([^"]+)"') do
-        if gear_slots[key] then
+        if gear_slots[key:lower()] then
             local name = val:match('^%s*(.-)%s*$')
             if name ~= '' and name ~= 'empty' then
                 items[name:lower()] = true
@@ -112,10 +162,30 @@ function parser.extract_gear_names(source)
         end
     end
     for key, val in clean:gmatch("(%a[%w_]*)%s*=%s*{%s*'([^']+)'") do
-        if gear_slots[key] then
+        if gear_slots[key:lower()] then
             local name = val:match('^%s*(.-)%s*$')
             if name ~= '' and name ~= 'empty' then
                 items[name:lower()] = true
+            end
+        end
+    end
+
+    -- Pattern 4: slot_key = TABLE.field  (variable reference to a table field)
+    for key, tbl, field in clean:gmatch('(%a[%w_]*)%s*=%s*(%a[%w_]*)%.(%a[%w_]*)') do
+        if gear_slots[key:lower()] then
+            local val = vars[tbl .. '.' .. field]
+            if val and val ~= '' and val:lower() ~= 'empty' then
+                items[val:lower()] = true
+            end
+        end
+    end
+
+    -- Pattern 5: slot_key = simple_var  (reference to a plain string variable)
+    for key, var_ref in clean:gmatch('(%a[%w_]*)%s*=%s*(%a[%w_]*)') do
+        if gear_slots[key:lower()] and vars[var_ref] then
+            local val = vars[var_ref]
+            if val ~= '' and val:lower() ~= 'empty' then
+                items[val:lower()] = true
             end
         end
     end
