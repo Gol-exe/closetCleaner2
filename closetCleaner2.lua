@@ -8,6 +8,7 @@ require 'tables'
 require 'logger'
 error = _raw.error
 res = require 'resources'
+slips = require 'slips'
 
 local parser = require 'luaParser'
 
@@ -491,6 +492,24 @@ local function read_inventory(skip_bags_set)
     return inv
 end
 
+local function read_slip_items()
+    local on_slips = {}
+    local ok, result = pcall(slips.get_player_items)
+    if not ok then return on_slips end
+    for slip_id, item_list in pairs(result) do
+        if type(item_list) == 'table' then
+            local slip_num = slips.storages:find(slip_id)
+            local label = slip_num and ('Slip %02d'):format(slip_num) or 'Slip'
+            for _, item_id in ipairs(item_list) do
+                if item_id and item_id ~= 0 then
+                    on_slips[item_id] = label
+                end
+            end
+        end
+    end
+    return on_slips
+end
+
 ----------------------------------------------------------------------
 -- Ignore-pattern matching
 ----------------------------------------------------------------------
@@ -559,6 +578,9 @@ local function run_report(cfg, char_name)
     ----------------------------------------------------------------
     windower.add_to_chat(207, 'closetCleaner2: reading inventory...')
     local inventory = read_inventory(skip_bags_set)
+
+    windower.add_to_chat(207, 'closetCleaner2: reading mog slips...')
+    local on_slips = read_slip_items()
 
     ----------------------------------------------------------------
     -- Phase 2: Parse gear from lua files
@@ -643,7 +665,8 @@ local function run_report(cfg, char_name)
     -- Classify lua-only items (not in inventory).
     -- Multi-stage items share a name across several IDs; skip an ID if
     -- any sibling ID for the same name IS in inventory, and deduplicate
-    -- so each name appears at most once in the missing list.
+    -- so each name appears at most once in the missing/in-use list.
+    -- Items found on mog slips are added to in_use with the slip as location.
     local seen_missing = {}
     for id, info in pairs(gear_items) do
         if not inventory[id] then
@@ -653,6 +676,7 @@ local function run_report(cfg, char_name)
                 local name_lower = name:lower()
                 if not seen_missing[name_lower] then
                     local sibling_in_inv = false
+                    local slip_label = on_slips[id]
                     local all_ids = items_by_name[name_lower] or items_by_longname[name_lower]
                     if all_ids then
                         for _, alt_id in ipairs(all_ids) do
@@ -660,15 +684,31 @@ local function run_report(cfg, char_name)
                                 sibling_in_inv = true
                                 break
                             end
+                            if not slip_label and on_slips[alt_id] then
+                                slip_label = on_slips[alt_id]
+                            end
                         end
                     end
-                    if not sibling_in_inv and not is_ignored(name, ignore_patterns) then
-                        local job_list = sorted_keys_alpha(info.jobs)
-                        if not cfg.max_use_count or #job_list <= cfg.max_use_count then
-                            missing[#missing + 1] = {
-                                id = id, name = name,
-                                jobs_str = table.concat(job_list, ','),
-                            }
+                    if not sibling_in_inv then
+                        if slip_label then
+                            local job_list = sorted_keys_alpha(info.jobs)
+                            local job_count = #job_list
+                            if not cfg.max_use_count or job_count <= cfg.max_use_count then
+                                in_use[#in_use + 1] = {
+                                    id = id, name = name,
+                                    jobs_str = table.concat(job_list, ','),
+                                    job_count = job_count, loc = slip_label,
+                                    equip_jobs = get_equippable_jobs_str(entry),
+                                }
+                            end
+                        elseif not is_ignored(name, ignore_patterns) then
+                            local job_list = sorted_keys_alpha(info.jobs)
+                            if not cfg.max_use_count or #job_list <= cfg.max_use_count then
+                                missing[#missing + 1] = {
+                                    id = id, name = name,
+                                    jobs_str = table.concat(job_list, ','),
+                                }
+                            end
                         end
                     end
                     seen_missing[name_lower] = true
@@ -791,7 +831,7 @@ local function run_report(cfg, char_name)
         f:write('\n')
 
         -- Section 3
-        f:write('Section 3: MISSING GEAR (in lua files, not in inventory, items stored on slips will also be marked as missing)   [' .. #missing .. ' items]\n')
+        f:write('Section 3: MISSING GEAR (in lua files, not in inventory; items stored on slips appear in Gear In Use)   [' .. #missing .. ' items]\n')
         local w2m = {NAME_W, JOBS_W}
         write_divider(f, w2m)
         write_row(f, {'Name', 'Jobs'}, w2m)
